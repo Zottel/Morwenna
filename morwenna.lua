@@ -94,9 +94,47 @@ morwenna = function(role, home_x, home_y)
 -- -------------------------------------------------------------------------- --
 --    ACTION QUEUE                                                            --
 -- -------------------------------------------------------------------------- --
---
+
 	local action = {}
+
+	-- Create two queues - combat actions are supposed to have a higher priority.
 	action.queue = {}
+	action.combatqueue = {}
+
+	action.insert = function(item)
+		local queue = nil
+		if item.type == "fire" then
+			table.insert(action.combatqueue, 1, item)
+		else
+			table.insert(action.queue, 1, item)
+		end
+	end
+
+	action.append = function(item)
+		if item.type == "fire" then
+			table.insert(action.combatqueue, item)
+		else
+			table.insert(action.queue, newaction)
+		end
+	end
+
+	-- Remove first element from queues and return it.
+	-- This is where the priorization combatqueue>queue happens
+	action.pop = function()
+		if action.combatqueue[1] == nil then
+			if action.queue[1] == nil then
+				return nil
+			else
+				local item = action.combatqueue[1]
+				table.remove(action.queue, 1)
+				return item
+			end
+		else
+			local item = action.combatqueue[1]
+			table.remove(action.combatqueue, 1)
+			return item
+		end
+	end
 
 	action.make = function(type, quantity, callback, insert)
 		local newaction = {action = "make", quantity = quantity, type = type, callback = callback}
