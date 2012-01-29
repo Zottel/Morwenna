@@ -11,7 +11,7 @@ morwenna = function(role, home_x, home_y)
 	-- Hello world
 	print("Hello world! I am a " .. role .. ", home at " .. home_x .. "/" .. home_y)
 	
-	-- Fortpflanzung
+	-- Reproduction
 	function receiver() --print("receiver running")
 		on_incoming_data = function(data) --print("receiving morwenna")
 			morwenna = loadstring(data);
@@ -70,6 +70,7 @@ morwenna = function(role, home_x, home_y)
 	function dump_slots()
 		print("empty: " .. count(slots_empty) .. ", ore: " .. count(slots_ore) .. ", drives: " .. count(slots_drive) .. ", weapons: " .. count(slots_weapon))
 	end
+
 	function rebuild_slots()
 		slots = get_slots()
 		slots_empty = {}
@@ -97,12 +98,14 @@ morwenna = function(role, home_x, home_y)
 
 	local action = {}
 
+	-- Callback to be handled once some action is finished
+	action.onFinished = nil
+
 	-- Create two queues - combat actions are supposed to have a higher priority.
 	action.queue = {}
 	action.combatqueue = {}
 
 	action.insert = function(item)
-		local queue = nil
 		if item.type == "fire" then
 			table.insert(action.combatqueue, 1, item)
 		else
@@ -162,291 +165,86 @@ morwenna = function(role, home_x, home_y)
 		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
 	end
 
+	-- Main action queue dispatcher
 	action.run = function()
-		if action.queue[1] == nil then return end
-		--if action.queue[1].quantity == nil then
-		--	print(role .. ": action: " .. action.queue[1].action)
-		--else
-		--	print(role .. ": action: " .. action.queue[1].action .. "(" .. action.queue[1].quantity .. ")")
-		--end
-		if action.queue[1].action == "fire" then
-			--TODO
-		elseif action.queue[1].action == "make" then
-			if action.queue[1].type == ORE then
-				if count(slots_empty) > 0 then
-					local ore_slot = mine()
-					if not ore_slot then
-						return
-					end
-					on_mining_complete = function()
-						slots_empty[ore_slot] = nil
-						slots_ore[ore_slot] = ore_slot
-						if action.queue[1].quantity > 1 then
-							action.queue[1].quantity = action.queue[1].quantity - 1
-						else
-							local callback = action.queue[1].callback
-							table.remove(action.queue, 1)
-							if callback then
-								callback()
-							end
-						end
-						action.run()
-						return
-					end
-				else
-					if count(slots_drive) > 0 then
-						local convert_slot = table.maxn(slots_drive)
-						manufacture(convert_slot, ORE)
-						on_manufacture_complete = function()
-							slots_drive[convert_slot] = nil
-							slots_ore[convert_slot] = convert_slot
-							if action.queue[1].quantity > 1 then
-								action.queue[1].quantity = action.queue[1].quantity - 1
-							else
-								local callback = action.queue[1].callback
-								table.remove(action.queue, 1)
-								if callback then
-									callback()
-								end
-							end
-							action.run()
-							return
-						end
-					elseif count(slots_weapon) > 0 then
-						local convert_slot = table.maxn(slots_weapon)
-						manufacture(convert_slot, ORE)
-						on_manufacture_complete = function()
-							slots_weapon[convert_slot] = nil
-							slots_ore[convert_slot] = convert_slot
-							if action.queue[1].quantity > 1 then
-								action.queue[1].quantity = action.queue[1].quantity - 1
-							else
-								local callback = action.queue[1].callback
-								table.remove(action.queue, 1)
-								if callback then
-									callback()
-								end
-							end
-							action.run()
-							return
-						end
-					else
-						print("error: No more place for ore! Wanted to mine for: " .. action.queue[1].quantity)
-						dump_slots()
-					end
-				end
-			elseif action.queue[1].type == DRIVE then
-				if count(slots_ore) < action.queue[1].quantity then
-					action.make(ORE, action.queue[1].quantity - count(slots_ore), nil, true)
-					action.run()
-				else
-					local manufacturing_slot = nil
-					on_manufacture_complete = function()
-						slots_ore[manufacturing_slot] = nil
-						slots_drive[manufacturing_slot] = manufacturing_slot
-						if action.queue[1].quantity > 1 then
-							action.queue[1].quantity = action.queue[1].quantity - 1
-						else
-							local callback = action.queue[1].callback
-							table.remove(action.queue, 1)
-							if callback then
-								callback()
-							end
-						end
-						action.run()
-						return
-					end
-					manufacturing_slot = table.maxn(slots_ore)
-					if not manufacture(manufacturing_slot, DRIVE) then
-						print("error: manufacture()")
-					end
-				end
-			elseif action.queue[1].type == WEAPON then
-				if count(slots_ore) < action.queue[1].quantity then
-					action.make(ORE, action.queue[1].quantity - count(slots_ore), nil, true)
-					action.run()
-				else
-					local manufacturing_slot = nil
-					on_manufacture_complete = function()
-						slots_ore[manufacturing_slot] = nil
-						slots_weapon[manufacturing_slot] = manufacturing_slot
-						if action.queue[1].quantity > 1 then
-							action.queue[1].quantity = action.queue[1].quantity - 1
-						else
-							local callback = action.queue[1].callback
-							table.remove(action.queue, 1)
-							if callback then
-								callback()
-							end
-						end
-						action.run()
-						return
-					end
-					manufacturing_slot = table.maxn(slots_ore)
-					if not manufacture(manufacturing_slot, WEAPON) then
-						print("error: manufacture()")
-					end
-				end
-			elseif action.queue[1].type == SHIP then
-				if count(slots_ore) < action.queue[1].quantity then
-					action.make(ORE, action.queue[1].quantity - count(slots_ore), nil, true)
-					action.run()
-				else
-					if get_docking_partner() then
-						print("error: already docked - cannot build a new ship")
-					else
-						local build_slots = {}
-						local n = action.queue[1].quantity
-						for _, v in pairs(slots_ore) do
-							if n > 0 then
-								table.insert(build_slots, v)
-								n = n - 1
-							end
-						end
-						if build_ship(build_slots) == nil then
-							print("error: could not build_ship")
-							table.remove(action.queue, 1)
-							action.run()
-							return
-						else
-							on_build_complete = function(newship)
-								for _, v in pairs(build_slots) do
-									slots_ore[v] = nil
-									slots_empty[v] = v
-								end
-								local callback = action.queue[1].callback
-								table.remove(action.queue, 1)
-								if callback then
-									callback(newship)
-								end
-								action.run()
-								return
-							end
-						end
-					end
-				end
-			end
-		elseif action.queue[1].action == "transfer" then
-			-- From the partner to us
-			if action.queue[1].direction then
-				-- TODO - sometime in the future
-			else
-				local partner = get_docking_partner()
-				if not partner then print("NO DOCKING PARTNER!") return end
-				-- Search free remote slot
-				local remote_slots = get_slots(partner)
+		-- When the ship/base is busy there is nothing to do now
+		if is_busy() then
+			print("action.run() was called while busy!")
+			dump_busy()
+			return
+		end
 
-				local remote_slot = nil
-				local local_slot = nil
+		-- If an onFinished handler was registered, remove and call it
+		if action.onFinished then
+			local onFinished = action.onFinished
+			action.onFinished = nil
+			onFinished()
+		end
+		
+		local item = action.pop()
 
-				for i = 1, #remote_slots do
-					if remote_slots[i] == EMPTY then
-						remote_slot = i
-					end
-				end
-				
-				if remote_slot == nil then
-					print("error: no empty remote slot!")
-					return
-				end
-				
-				if action.queue[1].type == ORE then
-					if count(slots_ore) < action.queue[1].quantity then
-						action.make(ORE, action.queue[1].quantity - count(slots_ore), nil, true)
-						action.run()
-						return
-					else
-						local_slot = table.maxn(slots_ore)
-					end
-				elseif action.queue[1].type == DRIVE then
-					if count(slots_drive) < action.queue[1].quantity then
-						action.make(DRIVE, action.queue[1].quantity - count(slots_drive), nil, true)
-						action.run()
-						return
-					else
-						local_slot = table.maxn(slots_drive)
-					end
-				elseif action.queue[1].type == WEAPON then
-					if count(slots_weapon) < action.queue[1].quantity then
-						action.make(WEAPON, action.queue[1].quantity - count(slots_weapon), nil, true)
-						action.run()
-						return
-					else
-						local_slot = table.maxn(slots_weapon)
-					end
-				end
-				transfer_slot(local_slot, remote_slot)
-				on_transfer_complete = function()
-					rebuild_slots()
-					
-					if action.queue[1].quantity > 1 then
-						action.queue[1].quantity = action.queue[1].quantity - 1
-					else
-						local callback = action.queue[1].callback
-						table.remove(action.queue, 1)
-						if callback then
-							callback()
-						end
-					end
-					
-					action.run()
-				end
-			end
-		elseif action.queue[1].action == "undock" then
-			if undock() then
-				on_undocking_complete = function()
-					local callback = action.queue[1].callback
-
-					table.remove(action.queue, 1)
-
-					if callback then
-						callback()
-					end
-
-					action.run()
-					return
-				end
-			else
-				print("could not undock!")
-				dump_busy()
-				table.remove(action.queue, 1)
-				action.run()
-				return
-			end
-		elseif action.queue[1].action == "upgrade" then
-			if #slots >= action.queue[1].quantity then
-				local callback = action.queue[1].callback
-
-				table.remove(action.queue, 1)
-
-				if callback then
-					callback()
-				end
-
-				action.run()
-				return
-			end
-				
-			if #slots == count(slots_ore) then
-				on_upgrade_complete = function()
-					rebuild_slots()
-					action.run()
-				end
-
-				if not upgrade_base() then
-					print("error: upgrade_base()")
-					-- Continue with next enqueued action
-					table.remove(action.queue, 1)
-					action.run()
-					return
-				end
-			else
-				action.make(ORE, #slots - count(slots_ore), nil, true)
-				action.run()
-			end
+		if action.handlers[item.action] then
+			action.handlers[item.action](item)
+		else
+			print("unknown action: '" .. item.action .."'")
+			action.run()
+			return
 		end
 	end
 
+	-- fire(item):
+	-- Makes one shot at the specified target.
+	--
+	-- item members:
+	--   target:   target entity
+	--   repeat:   ("after"|"before"|nil)
+	--   callback
+	action.handlers.fire = function(item)
+	end
+
+	-- make(item):
+	-- TODO
+	-- item members:
+	--   quantity
+	--   type:   (ORE|DRIVE|WEAPON|SHIP)
+	--   callback
+	action.handlers.make = function(item)
+	end
+	
+	-- transfer(item):
+	-- Transfers slot content from current ship/base to docking partner
+	-- item members:
+	--   quantity
+	--   type:   (ORE|DRIVE|WEAPON)
+	--   callback
+	action.handlers.transfer = function(item)
+	end
+
+	-- upgrade(item):
+	-- Upgrades base to slot size specified by quantity
+	-- item members:
+	--   quantity
+	--   callback
+	action.handlers.upgrade = function(item)
+	end
+	
+	-- Undocks from docking partner
+	--
+	-- item members:
+	--   callback
+	action.handlers.undock = function(item)
+	end
+	
+	-- Register action.run for all relevant event handlers
+	-- TODO: Look for missing handlers
+	on_weapons_ready = action.run
+	on_undocking_complete = action.run
+	on_transfer_complete = action.run
+	on_build_complete = action.run
+	on_mining_complete = action.run
+	on_manufacture_complete = action.run
+	on_colonize_complete = action.run
+	on_upgrade_complete = action.run
 
 -- -------------------------------------------------------------------------- --
 -- SHIP PERSONALITIES/ROLES
@@ -940,7 +738,10 @@ morwenna = function(role, home_x, home_y)
 -- INITIALIZATION
 -- -------------------------------------------------------------------------- --
 
+	-- Get rid of docked ship built by previous AI version
 	if get_type(self) == BASE and get_docking_partner() ~= nil then
+		-- TODO: wait for base to stop being busy with previous actions
+		--       register handlers
 		print("Getting rid of dead weight.")
 		infect("probe")
 		action.transfer(DRIVE, 1)
