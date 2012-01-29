@@ -1,5 +1,7 @@
-z0ttel = function(role, home_x, home_y)
-	-- API STUFF
+morwenna = function(role, home_x, home_y)
+-- -------------------------------------------------------------------------- --
+-- API STUFF
+-- -------------------------------------------------------------------------- --
 	count = function(a) local n = 0 for _, v in pairs(a) do n = n + 1 end return n end
 	math.randomseed(get_timestep())
 
@@ -11,15 +13,15 @@ z0ttel = function(role, home_x, home_y)
 	
 	-- Fortpflanzung
 	function receiver() --print("receiver running")
-		on_incoming_data = function(data) --print("receiving z0ttel")
-			z0ttel = loadstring(data);
+		on_incoming_data = function(data) --print("receiving morwenna")
+			morwenna = loadstring(data);
 			on_incoming_data = function(data) --print("receiving role")
 				local role = data
 				on_incoming_data = function(data) --print("receiving home x")
 					local home_x = data
 					on_incoming_data = function(data) --print("receiving home y")
 						local home_y = data
-						z0ttel(role, home_x, home_y)
+						morwenna(role, home_x, home_y)
 					end
 				end
 			end
@@ -28,7 +30,7 @@ z0ttel = function(role, home_x, home_y)
 	
 	function infect(role)
 		send_data(receiver)
-		send_data(z0ttel)
+		send_data(morwenna)
 		send_data(role)
 		send_data(home_x) send_data(home_y)
 	end
@@ -89,6 +91,10 @@ z0ttel = function(role, home_x, home_y)
 
 	rebuild_slots()
 
+-- -------------------------------------------------------------------------- --
+--    ACTION QUEUE                                                            --
+-- -------------------------------------------------------------------------- --
+--
 	local action = {}
 	action.queue = {}
 
@@ -113,6 +119,11 @@ z0ttel = function(role, home_x, home_y)
 		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
 	end
 
+	action.fire = function(callback, target, insert)
+		local newaction = {action = "fire", target = target, callback = callback}
+		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	end
+
 	action.run = function()
 		if action.queue[1] == nil then return end
 		--if action.queue[1].quantity == nil then
@@ -120,7 +131,9 @@ z0ttel = function(role, home_x, home_y)
 		--else
 		--	print(role .. ": action: " .. action.queue[1].action .. "(" .. action.queue[1].quantity .. ")")
 		--end
-		if action.queue[1].action == "make" then
+		if action.queue[1].action == "fire" then
+			--TODO
+		elseif action.queue[1].action == "make" then
 			if action.queue[1].type == ORE then
 				if count(slots_empty) > 0 then
 					local ore_slot = mine()
@@ -397,7 +410,9 @@ z0ttel = function(role, home_x, home_y)
 	end
 
 
-
+-- -------------------------------------------------------------------------- --
+-- SHIP PERSONALITIES/ROLES
+-- -------------------------------------------------------------------------- --
 
 	roles = {}
 	roles.home = function()
@@ -883,6 +898,10 @@ z0ttel = function(role, home_x, home_y)
 		end
 	end
 
+-- -------------------------------------------------------------------------- --
+-- INITIALIZATION
+-- -------------------------------------------------------------------------- --
+
 	if get_type(self) == BASE and get_docking_partner() ~= nil then
 		print("Getting rid of dead weight.")
 		infect("probe")
@@ -901,6 +920,6 @@ end
 
 home_x, home_y = get_position(self)
 
-z0ttel('home', home_x, home_y)
+morwenna('home', home_x, home_y)
 
 -- .quit
