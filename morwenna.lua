@@ -200,6 +200,18 @@ morwenna = function(role, home_x, home_y)
 	--   repeat:   ("after"|"before"|nil)
 	--   callback
 	action.handlers.fire = function(item)
+		if not fire(item.targe) then
+			action.run()
+			return
+		else
+			action.onFinished = item.callback
+			
+			if item["repeat"] == "after" then
+				action.append(item)
+			elseif item["repeat"] == "before" then
+				action.insert(item)
+			end
+		end
 	end
 
 	-- make(item):
