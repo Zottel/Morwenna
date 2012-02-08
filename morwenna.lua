@@ -183,7 +183,7 @@ morwenna = function(role, home_x, home_y)
 		
 		local item = action.pop()
 
-		if action.handlers[item.action] then
+		if item and action.handlers[item.action] then
 			action.handlers[item.action](item)
 		else
 			print("unknown action: '" .. item.action .."'")
@@ -200,7 +200,7 @@ morwenna = function(role, home_x, home_y)
 	--   repeat:   ("after"|"before"|nil)
 	--   callback
 	action.handlers.fire = function(item)
-		if not fire(item.targe) then
+		if not fire(item.target) then
 			action.run()
 			return
 		else
@@ -218,9 +218,63 @@ morwenna = function(role, home_x, home_y)
 	-- TODO
 	-- item members:
 	--   quantity
-	--   type:   (ORE|DRIVE|WEAPON|SHIP)
+	--   type:         (ORE|DRIVE|WEAPON|SHIP)
 	--   callback
+	--   required_for: (DRIVE|WEAPON)          <- not to be dismantled
+	--                                            useful when there are not enough
+	--                                            free slots to mine the required
+	--                                            quantity of ore
 	action.handlers.make = function(item)
+		if item.quantity > count(slots) then
+			-- TODO: LULZ ERROR!
+			return
+		end
+
+		if action.handlers.make_stage2[item.type] then
+			action.handlers.make_stage2[item.type](item)
+		else
+			-- TODO: ERROR!
+		end
+	end
+
+	action.handlers.make_stage2 = {}
+
+	action.handlers.make_stage2[ORE] = function(item)
+		-- Are there empty slots left?
+		if count(slots_empty) > 0 then
+			-- Produce one ore
+			local ore_slot = mine()
+			if not ore_slot then
+				-- TODO: ERROR!
+			else
+				-- Maintain slot lists
+				slots_empty[ore_slot] = nil
+				slots_ore[ore_slot] = ore_slot
+				-- Repeat until the required quantity is produced
+				if item.quantity < slots_ore then
+					action.insert(item)
+				else
+					action.onFinished = item.callback
+				end
+			end
+		else
+			-- TODO: Free other slots?
+		end
+	end
+	action.handlers.make_stage2[DRIVE] = function(item)
+		if count(slots_ore) >= item.quantity then
+			local convert_slot = table.maxn(slots_ore)
+			if manufacture(convert_slot, DRIVE) ~= nil then
+
+			else
+
+			end
+		else
+			
+		end
+	end
+	action.handlers.make_stage2[WEAPON] = function(item)
+		
 	end
 	
 	-- transfer(item):
