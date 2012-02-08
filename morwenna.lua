@@ -223,19 +223,20 @@ morwenna = function(role, home_x, home_y)
 	--   callback
 	--   required_for: item
 	action.handlers.make = function(item)
+		-- Are there enough slots to fill with what we're making?
 		if item.quantity > count(all_slots) then
-			if #all_slots > item.quantity then
-				-- requeue item
-				action.insert(item)
-				-- and insert the required ore production before
-				action.insert({action = "upgrade",
-											 quantity = item.quantity,
-											 required_for = item})
-				action.run()
-				return
-			end
+			-- Nope - gotta upgrade teh base
+			-- requeue item
+			action.insert(item)
+			-- and insert the required ore production before
+			action.insert({action = "upgrade",
+										 quantity = item.quantity,
+										 required_for = item})
+			action.run()
+			return
 		end
 
+		-- Look for specific make handler and call it
 		if action.handlers.make_stage2[item.type] then
 			action.handlers.make_stage2[item.type](item)
 		else
@@ -247,8 +248,9 @@ morwenna = function(role, home_x, home_y)
 	action.handlers.make_stage2 = {}
 
 	action.handlers.make_stage2[SHIP] = function(item)
-		-- Are there empty slots left?
+		-- is there enough ore?
 		if count(slots[ORE]) >= item.quantity then
+			-- yup - build an array containing the ore slots we use.
 			local build_slots = {}
 			local n = item.quantity
 
@@ -264,6 +266,7 @@ morwenna = function(role, home_x, home_y)
 				action.run()
 				return
 			else
+				-- keep lists of slots updated
 				for _, v in pairs(build_slots) do
 					slots[ORE][v] = nil
 					slots[EMPTY][v] = v
@@ -272,9 +275,9 @@ morwenna = function(role, home_x, home_y)
 			end
 			
 		else
-			-- requeue item
+			-- not enough ore - gotta re-insert our task…
 			action.insert(item)
-			-- and insert the required ore production before
+			-- …and insert the required ore production before
 			action.insert({action = "make",
 			               type=ORE,
 			               quantity = item.quantity,
