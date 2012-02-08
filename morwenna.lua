@@ -72,20 +72,20 @@ morwenna = function(role, home_x, home_y)
 	end
 
 	function rebuild_slots()
-		slots = get_slots()
-		slots_empty = {}
-		slots_ore = {}
-		slots_drive = {}
-		slots_weapon = {}
-		for i = 1, #slots do
-			if slots[i] == ORE then
-				slots_ore[i] = i
-			elseif slots[i] == DRIVE then
-				slots_drive[i] = i
-			elseif slots[i] == WEAPON then
-				slots_weapon[i] = i
-			elseif slots[i] == EMPTY then
-				slots_empty[i] = i
+		all_slots = get_slots()
+		slots = {[EMPTY] = {},
+		         [ORE] = {},
+						 [DRIVE] = {},
+						 [WEAPON] = {}}
+		for i = 1, #all_slots do
+			if all_slots[i] == ORE then
+				slots[ORE][i] = i
+			elseif all_slots[i] == DRIVE then
+				slots[DRIVE][i] = i
+			elseif all_slots[i] == WEAPON then
+				slots[WEAPON][i] = i
+			elseif all_slots[i] == EMPTY then
+				slots[EMPTY][i] = i
 			end
 		end
 	end
@@ -106,24 +106,29 @@ morwenna = function(role, home_x, home_y)
 	action.combatqueue = {}
 
 	action.insert = function(item)
+		print("inserting action: " .. item.action)
 		if item.type == "fire" then
 			table.insert(action.combatqueue, 1, item)
 		else
 			table.insert(action.queue, 1, item)
 		end
+		print("inserting action: " .. item.action .. " finished")
 	end
 
 	action.append = function(item)
+		print("appending action: " .. item.action)
 		if item.type == "fire" then
 			table.insert(action.combatqueue, item)
 		else
-			table.insert(action.queue, newaction)
+			table.insert(action.queue, item)
 		end
+		print("appending action: " .. item.action .. " finished")
 	end
 
 	-- Remove first element from queues and return it.
 	-- This is where the priorization combatqueue>queue happens
 	action.pop = function()
+		print(action.combatqueue[1], action.queue[1])
 		if action.combatqueue[1] == nil then
 			if action.queue[1] == nil then
 				return nil
@@ -139,30 +144,24 @@ morwenna = function(role, home_x, home_y)
 		end
 	end
 
-	action.make = function(type, quantity, callback, insert)
-		local newaction = {action = "make", quantity = quantity, type = type, callback = callback}
-		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	action.make = function(type, quantity, callback)
+		action.append{action = "make", type = type, quantity = quantity, callback = callback}
 	end
 
-	action.transfer = function(type, quantity, callback, direction, insert)
-		local newaction = {action = "transfer", quantity = quantity, type = type, direction = direction, callback = callback}
-		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	action.transfer = function(type, quantity, callback)
+		action.append{action = "transfer", quantity = quantity, type = type, callback = callback}
 	end
 
-	action.upgrade = function(callback, quantity, insert)
-		local newaction = {action = "upgrade", type = type, quantity = quantity, callback = callback}
-		if not quantity then newaction.quantity = 0 end
-		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	action.upgrade = function(callback, quantity)
+		action.append{action = "upgrade", type = type, quantity = quantity, callback = callback}
 	end
 
-	action.undock = function(callback, insert)
-		local newaction = {action = "undock", callback = callback}
-		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	action.undock = function(callback)
+		action.append{action = "undock", callback = callback}
 	end
 
-	action.fire = function(callback, target, insert)
-		local newaction = {action = "fire", target = target, callback = callback}
-		if insert then table.insert(action.queue, 1, newaction) else table.insert(action.queue, newaction) end
+	action.fire = function(callback, target, repeat_mode)
+		action.append{action = "fire", target = target, callback = callback, repeat_mode = repeat_mode}
 	end
 
 	-- Main action queue dispatcher
@@ -183,32 +182,39 @@ morwenna = function(role, home_x, home_y)
 		
 		local item = action.pop()
 
-		if item and action.handlers[item.action] then
-			action.handlers[item.action](item)
-		else
-			print("unknown action: '" .. item.action .."'")
-			action.run()
-			return
+		if item then
+			print("starting action:" .. item.action)
+			if action.handlers[item.action] then
+				action.handlers[item.action](item)
+			else
+				print("unknown action: '" .. item.action .."'")
+				action.run()
+				return
+			end
 		end
 	end
+
+	-- ACTION HANDLERS
+	action.handlers = {}
 
 	-- fire(item):
 	-- Makes one shot at the specified target.
 	--
 	-- item members:
 	--   target:   target entity
-	--   repeat:   ("after"|"before"|nil)
+	--   repeat_mode:   ("after"|"before"|nil)
 	--   callback
 	action.handlers.fire = function(item)
 		if not fire(item.target) then
+			-- Target must be out of sight or destroyed - move to next task
 			action.run()
 			return
 		else
 			action.onFinished = item.callback
 			
-			if item["repeat"] == "after" then
+			if item["repeat_mode"] == "after" then
 				action.append(item)
-			elseif item["repeat"] == "before" then
+			elseif item["repeat_mode"] == "before" then
 				action.insert(item)
 			end
 		end
@@ -225,7 +231,7 @@ morwenna = function(role, home_x, home_y)
 	--                                            free slots to mine the required
 	--                                            quantity of ore
 	action.handlers.make = function(item)
-		if item.quantity > count(slots) then
+		if item.quantity > count(all_slots) then
 			-- TODO: LULZ ERROR!
 			return
 		end
@@ -241,15 +247,15 @@ morwenna = function(role, home_x, home_y)
 
 	action.handlers.make_stage2[ORE] = function(item)
 		-- Are there empty slots left?
-		if count(slots_empty) > 0 then
+		if count(slots[EMPTY]) > 0 then
 			-- Produce one ore
 			local ore_slot = mine()
 			if not ore_slot then
 				-- TODO: ERROR!
 			else
 				-- Maintain slot lists
-				slots_empty[ore_slot] = nil
-				slots_ore[ore_slot] = ore_slot
+				slots[EMPTY][ore_slot] = nil
+				slots[ORE][ore_slot] = ore_slot
 				-- Repeat until the required quantity is produced
 				if item.quantity < slots_ore then
 					action.insert(item)
@@ -261,20 +267,55 @@ morwenna = function(role, home_x, home_y)
 			-- TODO: Free other slots?
 		end
 	end
+
 	action.handlers.make_stage2[DRIVE] = function(item)
-		if count(slots_ore) >= item.quantity then
-			local convert_slot = table.maxn(slots_ore)
+		if count(slots[ORE]) >= item.quantity then
+			local convert_slot = table.maxn(slots[ORE])
 			if manufacture(convert_slot, DRIVE) ~= nil then
-
+				slots[ORE][convert_slot] = nil
+				slots[DRIVE][convert_slot] = convert_slot
+				if item.quantity >= count(slots[DRIVE]) then
+					action.onFinished = item.callback
+				else
+					action.insert(item)
+				end
 			else
-
+				-- TODO: ERROR
 			end
 		else
-			
+			-- requeue item
+			action.insert(item)
+			-- and insert the required ore production before
+			action.insert({action = "make",
+			               type=ORE,
+			               quantity = item.quantity,
+			               required_for = DRIVE})
 		end
 	end
+
 	action.handlers.make_stage2[WEAPON] = function(item)
-		
+		if count(slots[ORE]) >= item.quantity then
+			local convert_slot = table.maxn(slots[ORE])
+			if manufacture(convert_slot, WEAPON) ~= nil then
+				slots[ORE][convert_slot] = nil
+				slots[WEAPON][convert_slot] = convert_slot
+				if item.quantity >= count(slots[WEAPON]) then
+					action.onFinished = item.callback
+				else
+					action.insert(item)
+				end
+			else
+				-- TODO: ERROR
+			end
+		else
+			-- requeue item
+			action.insert(item)
+			-- and insert the required ore production before
+			action.insert({action = "make",
+			               type=ORE,
+			               quantity = item.quantity,
+			               required_for = WEAPON})
+		end
 	end
 	
 	-- transfer(item):
@@ -284,6 +325,58 @@ morwenna = function(role, home_x, home_y)
 	--   type:   (ORE|DRIVE|WEAPON)
 	--   callback
 	action.handlers.transfer = function(item)
+		local partner = get_docking_partner()
+		if not partner then
+			print("NO DOCKING PARTNER!")
+			return
+		end
+		-- Search free remote slot
+		local remote_slots = get_slots(partner)
+
+		local remote_slot = nil
+		local local_slot = nil
+
+		for i = 1, #remote_slots do
+			if remote_slots[i] == EMPTY then
+				remote_slot = i
+			end
+		end
+
+		if remote_slot == nil then
+			print("error: no empty remote slot!")
+			action.run()
+		end
+
+		if not slots[item.type] then
+			print("Wrong slot type")
+			action.run()
+		end
+
+		if count(slots[item.type]) > 0 then
+			local_slot = table.maxn(slots[item.type])
+
+			if not transfer_slot(local_slot, remote_slot) then
+				print("could not transfer slot!")
+				action.run()
+			end
+
+			slots[item.type][local_slot] = nil
+			slots[EMPTY][local_slot] = local_slot
+
+			item.quantity = item.quantity - 1
+			
+			if item.quantity <= 0 then
+				action.onFinished = item.callback
+			else
+				action.insert(item)
+			end
+
+		else
+			action.insert(item)
+			action.insert({action = "make",
+			               type=item.type,
+			               quantity = 1})
+		end
 	end
 
 	-- upgrade(item):
@@ -292,6 +385,29 @@ morwenna = function(role, home_x, home_y)
 	--   quantity
 	--   callback
 	action.handlers.upgrade = function(item)
+		if #all_slots > item.quantity then
+			if count(slots[ORE]) == #all_slots then
+				if upgrade_base() then
+					rebuild_slots()
+					if #all_slots <= item.quantity then
+						action.onFinished = item.callback
+					else
+						action.insert(item)
+					end
+				else
+					print("could not upgrade!")
+					action.run()
+				end
+			else
+				action.insert(item)
+				action.insert({action = "make",
+				               type = ORE,
+				               quantity = #all_slots})
+			end
+		else
+			-- Nothing to do here
+			action.run()
+		end
 	end
 	
 	-- Undocks from docking partner
@@ -299,6 +415,12 @@ morwenna = function(role, home_x, home_y)
 	-- item members:
 	--   callback
 	action.handlers.undock = function(item)
+		if undock() then
+			action.onFinished = item.callback
+		else
+			print("could not undock!")
+			action.run()
+		end
 	end
 	
 	-- Register action.run for all relevant event handlers
