@@ -112,7 +112,6 @@ morwenna = function(role, home_x, home_y)
 		else
 			table.insert(action.queue, 1, item)
 		end
-		print("inserting action: " .. item.action .. " finished")
 	end
 
 	action.append = function(item)
@@ -122,7 +121,6 @@ morwenna = function(role, home_x, home_y)
 		else
 			table.insert(action.queue, item)
 		end
-		print("appending action: " .. item.action .. " finished")
 	end
 
 	-- Remove first element from queues and return it.
@@ -133,7 +131,7 @@ morwenna = function(role, home_x, home_y)
 			if action.queue[1] == nil then
 				return nil
 			else
-				local item = action.combatqueue[1]
+				local item = action.queue[1]
 				table.remove(action.queue, 1)
 				return item
 			end
