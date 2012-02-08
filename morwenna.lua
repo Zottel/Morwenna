@@ -106,7 +106,6 @@ morwenna = function(role, home_x, home_y)
 	action.combatqueue = {}
 
 	action.insert = function(item)
-		print("inserting action: " .. item.action)
 		if item.type == "fire" then
 			table.insert(action.combatqueue, 1, item)
 		else
@@ -115,7 +114,6 @@ morwenna = function(role, home_x, home_y)
 	end
 
 	action.append = function(item)
-		print("appending action: " .. item.action)
 		if item.type == "fire" then
 			table.insert(action.combatqueue, item)
 		else
@@ -126,7 +124,6 @@ morwenna = function(role, home_x, home_y)
 	-- Remove first element from queues and return it.
 	-- This is where the priorization combatqueue>queue happens
 	action.pop = function()
-		print(action.combatqueue[1], action.queue[1])
 		if action.combatqueue[1] == nil then
 			if action.queue[1] == nil then
 				return nil
@@ -164,6 +161,7 @@ morwenna = function(role, home_x, home_y)
 
 	-- Main action queue dispatcher
 	action.run = function()
+
 		-- When the ship/base is busy there is nothing to do now
 		if is_busy() then
 			print("action.run() was called while busy!")
@@ -181,7 +179,6 @@ morwenna = function(role, home_x, home_y)
 		local item = action.pop()
 
 		if item then
-			print("starting action:" .. item.action)
 			if action.handlers[item.action] then
 				action.handlers[item.action](item)
 			else
@@ -224,24 +221,67 @@ morwenna = function(role, home_x, home_y)
 	--   quantity
 	--   type:         (ORE|DRIVE|WEAPON|SHIP)
 	--   callback
-	--   required_for: (DRIVE|WEAPON)          <- not to be dismantled
-	--                                            useful when there are not enough
-	--                                            free slots to mine the required
-	--                                            quantity of ore
+	--   required_for: item
 	action.handlers.make = function(item)
 		if item.quantity > count(all_slots) then
-			-- TODO: LULZ ERROR!
-			return
+			if #all_slots > item.quantity then
+				-- requeue item
+				action.insert(item)
+				-- and insert the required ore production before
+				action.insert({action = "upgrade",
+											 quantity = item.quantity,
+											 required_for = item})
+				action.run()
+				return
+			end
 		end
 
 		if action.handlers.make_stage2[item.type] then
 			action.handlers.make_stage2[item.type](item)
 		else
-			-- TODO: ERROR!
+			print("no handler for making" .. item.type)
+			action.run()
 		end
 	end
 
 	action.handlers.make_stage2 = {}
+
+	action.handlers.make_stage2[SHIP] = function(item)
+		-- Are there empty slots left?
+		if count(slots[ORE]) >= item.quantity then
+			local build_slots = {}
+			local n = item.quantity
+
+			for _, v in pairs(slots[ORE]) do
+				if n > 0 then
+					table.insert(build_slots, v)
+					n = n - 1
+				end
+			end
+
+			if build_ship(build_slots) == nil then
+				print("error: could not build_ship")
+				action.run()
+				return
+			else
+				for _, v in pairs(build_slots) do
+					slots[ORE][v] = nil
+					slots[EMPTY][v] = v
+				end
+				action.onFinished = item.callback
+			end
+			
+		else
+			-- requeue item
+			action.insert(item)
+			-- and insert the required ore production before
+			action.insert({action = "make",
+			               type=ORE,
+			               quantity = item.quantity,
+			               required_for = item})
+			action.run()
+		end
+	end
 
 	action.handlers.make_stage2[ORE] = function(item)
 		-- Are there empty slots left?
@@ -249,20 +289,56 @@ morwenna = function(role, home_x, home_y)
 			-- Produce one ore
 			local ore_slot = mine()
 			if not ore_slot then
-				-- TODO: ERROR!
+				print("could not mine!")
+				action.run()
+				return
+			end
+
+			-- Maintain slot lists
+			slots[EMPTY][ore_slot] = nil
+			slots[ORE][ore_slot] = ore_slot
+		else
+			local takefrompossible = {}
+
+			if item.required_for and item.required_for.type == DRIVE then
+				table.insert(takefrompossible, slots[DRIVE])
+			elseif item.required_for and item.required_for.type == WEAPON then
+				table.insert(takefrompossible, slots[WEAPON])
 			else
-				-- Maintain slot lists
-				slots[EMPTY][ore_slot] = nil
-				slots[ORE][ore_slot] = ore_slot
-				-- Repeat until the required quantity is produced
-				if item.quantity < slots_ore then
-					action.insert(item)
-				else
-					action.onFinished = item.callback
+				table.insert(takefrompossible, slots[WEAPON])
+				table.insert(takefrompossible, slots[DRIVE])
+			end
+
+			local takefrom = nil
+			local takefromslot = nil
+
+			for _, from in pairs(takefrompossible) do
+				if count(from) >= 1 then
+					takefrom = from
+					takefromslot = table.maxn(from)
 				end
 			end
+
+			if takefromslot and manufacture(takefromslot, ORE) then
+				takefrom[takefromslot] = nil
+				slots[ORE][takefromslot] = takefromslot
+			else
+				print("could not manufacture ore! (ore: " .. count(slots[ORE]) .. ", drives: " .. count(slots[DRIVE]) .. ", weapons: " .. count(slots[WEAPON]) .. ")")
+				if item.required_for and item.required_for.type == DRIVE then
+					print("required for drive")
+				elseif item.required_for and item.required_for.type == WEAPON then
+					print("required for weapon")
+				end
+				action.run()
+				return
+			end
+		end
+		
+		-- Repeat until the required quantity is produced
+		if item.quantity < count(slots[ORE]) then
+			action.insert(item)
 		else
-			-- TODO: Free other slots?
+			action.onFinished = item.callback
 		end
 	end
 
@@ -278,7 +354,9 @@ morwenna = function(role, home_x, home_y)
 					action.insert(item)
 				end
 			else
-				-- TODO: ERROR
+				print("could not manufacture drive")
+				action.run()
+				return
 			end
 		else
 			-- requeue item
@@ -287,7 +365,8 @@ morwenna = function(role, home_x, home_y)
 			action.insert({action = "make",
 			               type=ORE,
 			               quantity = item.quantity,
-			               required_for = DRIVE})
+			               required_for = item})
+			action.run()
 		end
 	end
 
@@ -303,7 +382,9 @@ morwenna = function(role, home_x, home_y)
 					action.insert(item)
 				end
 			else
-				-- TODO: ERROR
+				print("could not manufacture weapon") 
+				action.run()
+				return
 			end
 		else
 			-- requeue item
@@ -312,7 +393,8 @@ morwenna = function(role, home_x, home_y)
 			action.insert({action = "make",
 			               type=ORE,
 			               quantity = item.quantity,
-			               required_for = WEAPON})
+			               required_for = item})
+			action.run()
 		end
 	end
 	
@@ -326,6 +408,7 @@ morwenna = function(role, home_x, home_y)
 		local partner = get_docking_partner()
 		if not partner then
 			print("NO DOCKING PARTNER!")
+			action.run()
 			return
 		end
 		-- Search free remote slot
@@ -343,11 +426,13 @@ morwenna = function(role, home_x, home_y)
 		if remote_slot == nil then
 			print("error: no empty remote slot!")
 			action.run()
+			return
 		end
 
 		if not slots[item.type] then
 			print("Wrong slot type")
 			action.run()
+			return
 		end
 
 		if count(slots[item.type]) > 0 then
@@ -356,6 +441,7 @@ morwenna = function(role, home_x, home_y)
 			if not transfer_slot(local_slot, remote_slot) then
 				print("could not transfer slot!")
 				action.run()
+				return
 			end
 
 			slots[item.type][local_slot] = nil
@@ -374,6 +460,7 @@ morwenna = function(role, home_x, home_y)
 			action.insert({action = "make",
 			               type=item.type,
 			               quantity = 1})
+			action.run()
 		end
 	end
 
@@ -383,9 +470,10 @@ morwenna = function(role, home_x, home_y)
 	--   quantity
 	--   callback
 	action.handlers.upgrade = function(item)
-		if #all_slots > item.quantity then
+		if #all_slots < item.quantity then
 			if count(slots[ORE]) == #all_slots then
 				if upgrade_base() then
+					dump_slots()
 					rebuild_slots()
 					if #all_slots <= item.quantity then
 						action.onFinished = item.callback
@@ -395,12 +483,14 @@ morwenna = function(role, home_x, home_y)
 				else
 					print("could not upgrade!")
 					action.run()
+					return
 				end
 			else
 				action.insert(item)
 				action.insert({action = "make",
 				               type = ORE,
 				               quantity = #all_slots})
+				action.run()
 			end
 		else
 			-- Nothing to do here
@@ -418,6 +508,7 @@ morwenna = function(role, home_x, home_y)
 		else
 			print("could not undock!")
 			action.run()
+			return
 		end
 	end
 	
@@ -516,7 +607,7 @@ morwenna = function(role, home_x, home_y)
 			if tmpnextplanet ~= nil and get_distance(tmpnextplanet) < 100 then
 				if colonize(tmpnextplanet) then
 					next_planet = nil
-					on_timer_expired = function() end
+					on_timer_expired = action.run
 					return
 				else
 					tmpnextplanet = nil
@@ -625,7 +716,9 @@ morwenna = function(role, home_x, home_y)
 
 			makeship()
 
-			action.run()
+			if not is_busy() then
+				action.run()
+			end
 		end -- }
 	end
 		
