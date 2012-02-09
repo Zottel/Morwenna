@@ -216,7 +216,6 @@ morwenna = function(role, home_x, home_y)
 	end
 
 	-- make(item):
-	-- TODO
 	-- item members:
 	--   quantity
 	--   type:         (ORE|DRIVE|WEAPON|SHIP)
@@ -245,6 +244,7 @@ morwenna = function(role, home_x, home_y)
 		end
 	end
 
+	-- Specific make handlers are stored in a table
 	action.handlers.make_stage2 = {}
 
 	action.handlers.make_stage2[SHIP] = function(item)
@@ -476,7 +476,6 @@ morwenna = function(role, home_x, home_y)
 		if #all_slots < item.quantity then
 			if count(slots[ORE]) == #all_slots then
 				if upgrade_base() then
-					dump_slots()
 					rebuild_slots()
 					if #all_slots <= item.quantity then
 						action.onFinished = item.callback
@@ -527,6 +526,39 @@ morwenna = function(role, home_x, home_y)
 	on_upgrade_complete = action.run
 
 -- -------------------------------------------------------------------------- --
+-- SHIP HELPER FUNCTIONS
+-- -------------------------------------------------------------------------- --
+-- * easy ship building
+-- * swarm movement
+-- -------------------------------------------------------------------------- --
+	local function queue_ship(options)
+		-- Ships need at least three slots
+		if not options.size or options.size < 3 then
+			options.size = 3
+		end
+
+		-- Build ship
+		action.make(SHIP, options.size, function()
+			infect(options.personality)
+		end)
+
+		-- Each ship needs at least one drive
+		if not options.drives or options.drives <= 0 then
+			options.drives = 1
+		end
+
+		action.transfer(DRIVE, options.drives)
+
+		if options.weapons and options.weapons > 0 then
+			action.transfer(WEAPON, options.weapons)
+		end
+
+		action.undock(function()
+			if options.callback then options.callback() end
+		end)
+	end
+
+-- -------------------------------------------------------------------------- --
 -- SHIP PERSONALITIES/ROLES
 -- -------------------------------------------------------------------------- --
 
@@ -534,43 +566,23 @@ morwenna = function(role, home_x, home_y)
 	roles.home = function()
 		--action.upgrade(nil, 24)
 		for i = 1, 5 do
-			action.make(SHIP, 3)
-			action.transfer(DRIVE, 1, function()
-				infect("probe")
-			end)
-			action.undock()
+			queue_ship{personality = "probe"}
 		end
 
 		action.upgrade(nil, 12)
 
-		function makeship()
+		local function buildloop()
 			for i = 1, 3 do
-				action.make(SHIP, 12)
-				action.transfer(DRIVE, 3)
-				action.transfer(WEAPON, 9, function()
-					infect("attack")
-				end)
-				action.undock()
+				queue_ship{personality = "attack", size = 12, drives = 3, weapons = 9}
 			end
 			for i = 1, 2 do
-				action.make(SHIP, 12)
-				action.transfer(DRIVE, 3)
-				action.transfer(WEAPON, 9, function()
-					infect("guard")
-				end)
-				action.undock()
+				queue_ship{personality = "guard", size = 12, drives = 3, weapons = 9}
 			end
 
-			action.make(SHIP, 3)
-			action.transfer(DRIVE, 3, function()
-				infect("probe")
-			end)
-			action.undock(function()
-				makeship()
-			end)
+			queue_ship{personality = "probe", callback = buildloop}
 		end
 
-		makeship()
+		buildloop()
 	end
 
 	roles.probe = function()
@@ -643,7 +655,7 @@ morwenna = function(role, home_x, home_y)
 				return
 			else
 				if random_search_count > 10 then
-					moveto(-100, -100)
+					set_autopilot_to(-100, -100)
 					return
 				end
 
@@ -1022,15 +1034,13 @@ morwenna = function(role, home_x, home_y)
 
 	-- Get rid of docked ship built by previous AI version
 	if get_type(self) == BASE and get_docking_partner() ~= nil then
-		-- TODO: wait for base to stop being busy with previous actions
-		--       register handlers
 		print("Getting rid of dead weight.")
 		infect("probe")
 		action.transfer(DRIVE, 1)
 		action.undock(function()
 			roles[role]()
 		end)
-		action.run()
+		if not is_busy() then action.run() end
 	else
 		roles[role]()
 
