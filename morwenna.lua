@@ -564,6 +564,51 @@ morwenna = function(role, home_x, home_y)
 		end)
 	end
 
+	local function swarm_move(attractor)
+		local curr_x, curr_y = get_position(self)
+
+		-- attraction vector
+		local att_x = 0
+		local att_y = 0
+
+		-- iterate through entities in range
+		for _, v in pairs(get_entities(5000, SHIP + PLANET + BASE + ASTEROID)) do
+
+			-- If we're close to a free planet - try to colonize
+			if get_type(v) == PLANET and get_player(v) == 0 and get_distance(v) <= 100 then
+				if colonize(v) then
+					print("new colony!")
+				else
+					print("Could not colonize!")
+				end
+			end
+
+			local v_x, v_y = get_position(v)
+			local rel_x = v_x - curr_x
+			local rel_y = v_y - curr_y
+			local distance = get_distance(v)
+			local att_x_v, att_y_v
+			-- sqrt(300 * 300 * 2) is the default attraction vector length
+			-- -> attraction 1 results in a attraction vector of that length
+			if math.abs(distance) > 1 then
+
+				attraction = attractor(distance, v)
+				
+				att_x_v = (rel_x / distance) * 3000 * attraction
+				att_y_v = (rel_y / distance) * 3000 * attraction
+			else
+				att_x_v = math.random(6000) - 3000
+				att_y_v = math.random(6000) - 3000
+			end
+
+			-- add attraction vector of entity to general attraction vector
+			att_x = att_x + att_x_v
+			att_y = att_y + att_y_v
+		end
+
+		moveto(curr_x + att_x, curr_y + att_y)
+	end
+
 -- -------------------------------------------------------------------------- --
 --    SHIP PERSONALITIES/ROLES
 -- -------------------------------------------------------------------------- --
