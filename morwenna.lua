@@ -1,6 +1,6 @@
 morwenna = function(role, home_x, home_y)
 -- -------------------------------------------------------------------------- --
--- API STUFF
+--    API STUFF
 -- -------------------------------------------------------------------------- --
 	count = function(a) local n = 0 for _, v in pairs(a) do n = n + 1 end return n end
 	math.randomseed(get_timestep())
@@ -532,10 +532,10 @@ morwenna = function(role, home_x, home_y)
 	on_upgrade_complete = action.run
 
 -- -------------------------------------------------------------------------- --
--- SHIP HELPER FUNCTIONS
+--    SHIP HELPER FUNCTIONS
 -- -------------------------------------------------------------------------- --
--- * easy ship building
--- * swarm movement
+--  * easy ship building
+--  * swarm movement
 -- -------------------------------------------------------------------------- --
 	local function queue_ship(options)
 		-- Ships need at least three slots
@@ -565,7 +565,7 @@ morwenna = function(role, home_x, home_y)
 	end
 
 -- -------------------------------------------------------------------------- --
--- SHIP PERSONALITIES/ROLES
+--    SHIP PERSONALITIES/ROLES
 -- -------------------------------------------------------------------------- --
 
 	roles = {}
@@ -1035,7 +1035,7 @@ morwenna = function(role, home_x, home_y)
 	end
 
 -- -------------------------------------------------------------------------- --
--- INITIALIZATION
+--    INITIALIZATION
 -- -------------------------------------------------------------------------- --
 
 	-- Get rid of docked ship built by previous AI version
