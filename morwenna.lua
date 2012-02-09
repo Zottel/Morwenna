@@ -32,7 +32,13 @@ morwenna = function(role, home_x, home_y)
 		send_data(receiver)
 		send_data(morwenna)
 		send_data(role)
-		send_data(home_x) send_data(home_y)
+		
+		-- original home coordinates - not as cool as I thought it would be
+		-- send_data(home_x) send_data(home_y)
+		
+		-- coordinates of base infecting the ship
+		local x, y = get_position(next_planet)
+		send_data(x) send_data(y)
 	end
 	
 	-- slot tracking
