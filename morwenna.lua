@@ -229,12 +229,10 @@ morwenna = function(role, home_x, home_y)
 	--   callback
 	action.handlers.fire = function(item)
 		if not fire(item.target) then
-			print("action fire() failed")
 			-- Target must be out of sight or destroyed - move to next task
 			action.run()
 			return
 		else
-			print("action fire() succeeded")
 			action.onFinished = item.callback
 			
 			if item["repeat_mode"] == "after" then
@@ -600,13 +598,13 @@ morwenna = function(role, home_x, home_y)
 		for _, v in pairs(get_entities(5000, SHIP + PLANET + BASE + ASTEROID)) do
 
 			-- If we're close to a free planet - try to colonize
-			--if get_type(v) == PLANET and get_player(v) == 0 and get_distance(v) <= 100 then
-			--	if colonize(v) then
-			--		print("new colony!")
-			--	else
-			--		print("Could not colonize!")
-			--	end
-			--end
+			if get_type(v) == PLANET and get_player(v) == 0 and get_distance(v) <= 100 then
+				if colonize(v) then
+					print("new colony!")
+				else
+					print("Could not colonize!")
+				end
+			end
 
 			local v_x, v_y = get_position(v)
 			local rel_x = v_x - curr_x
@@ -631,7 +629,8 @@ morwenna = function(role, home_x, home_y)
 			att_y = att_y + att_y_v
 		end
 
-		moveto(curr_x + att_x, curr_y + att_y)
+		moveto(math.max(xmin + 5000, math.min(xmax - 5000, curr_x + att_x)),
+		       math.max(ymin + 5000, math.min(ymax - 5000, curr_y + att_y)))
 	end
 
 -- -------------------------------------------------------------------------- --
@@ -758,10 +757,10 @@ morwenna = function(role, home_x, home_y)
 				queue_ship{personality = "probe"}
 			end
 
-			action.upgrade(nil, 24)
+			--action.upgrade(nil, 24)
 
 			makeship = function()
-				queue_ship{personality = "guard", size = 12, drives = 4, weapons = 8, callback = makeship}
+				queue_ship{personality = "guard", size = 6, drives = 2, weapons = 4, callback = makeship}
 			end
 
 			makeship()
@@ -775,21 +774,28 @@ morwenna = function(role, home_x, home_y)
 	roles.guard = function()
 		local function attractor(distance, entity)
 			if get_player(entity) == get_player() then
-				return math.min(-2 + (distance / 250), 0)
-				--if get_type(entity) == BASE then
-				--	return math.max(-10, math.min(0.1, (math.sqrt(distance / 10) - 10) / 5))
-				--else
-				--	return math.max(-10, math.min(0, (math.sqrt(distance / 10) - 10) / 5))
-				--end
+				if get_type(entity) == BASE or get_type(entity) == PLANET then
+					if distance < 500 then
+						return -1
+					else
+						return 2 * math.exp((0-distance) / 2000)
+					end
+				else
+					--if distance < 500 then
+						return math.max(-10, ((0-700)/distance))
+					--else
+					--	return 0
+					--end
+				end
 			elseif get_player(entity) ~= 0 then
 				if get_type(entity) == SHIP then
-					return math.max(-1, math.min(0.3, math.pow((distance - 300) / 300, 3)))
+					return math.max(-10, math.min(1, math.pow((distance - 300) / 300, 3)))
 				else
-					return math.max(-1, math.min(1, math.pow((distance - 300) / 300, 3)))
+					return math.max(-10, math.min(10, math.pow((distance - 300) / 300, 3)))
 				end
 			else
 				if get_type(entity) == PLANET then
-					return math.max(-1, math.min(0.3, math.pow((distance - 300) / 300, 3)))
+					return math.max(-10, math.min(1, math.pow((distance - 100) / 100, 3)))
 				else
 					return math.max(-1, math.min(0, math.pow((distance - 300) / 300, 3)))
 				end
@@ -806,7 +812,7 @@ morwenna = function(role, home_x, home_y)
 					on_entity_in_range(v)
 				end
 				
-				action.timer(10, hop)
+				action.timer(20, hop)
 			end
 			
 			action.timer(10, hop)
@@ -823,104 +829,14 @@ morwenna = function(role, home_x, home_y)
 				action.run()
 			end
 		end
-	end
 
-	roles.attacker = function()
-		state = "searching"
-		local enemy = nil
-	
-		on_autopilot_arrived = function()
-			if state == "searching" then
-				enemy = nil
-				min_enemy_distance = 100000
-				ships = get_entities(100000, SHIP + BASE);
-				for i = 1, #ships do
-					if get_player(ships[i]) ~= get_player() then
-						if get_distance(ships[i]) < min_enemy_distance then
-							min_enemy_distance = get_distance(ships[i])
-							enemy = ships[i]
-							state = "approaching"
-						end
-					end
-				end
-				if enemy ~= nil then
-					set_autopilot_to(get_position(enemy))
-					return
-				end
-				min_enemy_distance = 1000000
-				planets = get_entities(1000000, PLANET);
-				for i = 1, #planets do
-					if get_player(planets[i]) ~= 0 and get_player(planets[i]) ~= get_player() then
-						if get_distance(planets[i]) < min_enemy_distance then
-							min_enemy_distance = get_distance(planets[i])
-							enemy = planets[i]
-							state = "approaching"
-						end
-					end
-				end
-				if enemy ~= nil then
-					set_autopilot_to(get_position(enemy))
-					return
-				end
-			elseif state == "approaching" then
-				if get_distance(enemy) == nil or get_type(enemy) == planet then
-					state = "searching"
-					on_autopilot_arrived()
-				elseif get_distance(enemy) > 400 then
-					local ex, ey = get_position(enemy)
-					local mx, my = get_position(self)
-					set_autopilot_to((ex + mx) / 2, (ey + my) / 2)
-				else
-					fire(enemy)
-				end
+		on_colonize_complete = function()
+			on_timer_expired = function() end
+			local function buildloop()
+				queue_ship{personality = "guard", size = 6, drives = 2, weapons = 4, callback=buildloop}
 			end
-		end
-		on_being_undocked = on_autopilot_arrived
-
-		on_entity_approaching = function(other)
-			if (get_type(other) == SHIP or get_type(other) == BASE)
-			   and get_player(other) ~= get_player()
-			then
-				if enemy == nil
-				   or get_distance(enemy) == nil
-					 or get_type(enemy) == PLANET
-				   or get_distance(enemy) > get_distance(other)
-				then
-					enemy = other
-					set_autopilot_to(get_position(enemy))
-				end
-			end
-		end
-
-		on_entity_in_range = function(other)
-			if (get_type(other) == SHIP or get_type(other) == BASE)
-			   and get_player(other) ~= get_player()
-			then
-				if enemy == nil
-				   or get_distance(enemy) == nil
-					 or get_type(enemy) == PLANET
-				   or get_distance(enemy) > get_distance(other)
-					 or enemy == other
-				then
-					enemy = other
-					local ex, ey = get_position(enemy)
-					local mx, my = get_position(self)
-					set_autopilot_to((ex + mx) / 2, (ey + my) / 2)
-					--autopilot_stop()
-					fire(enemy)
-				end
-			end
-		end
-		on_weapons_ready = function()
-			if not fire(enemy) then
-				if get_distance(enemy) ~= nil then
-					local ex, ey = get_position(enemy)
-					local mx, my = get_position(self)
-					set_autopilot_to((ex + mx) / 2, (ey + my) / 2)
-				else
-					on_autopilot_arrived()
-				end
-			end
+			buildloop()
+			action.run()
 		end
 	end
 
